@@ -78,6 +78,18 @@
 	.card h2 { margin: 8px 0 8px; font-size: 22px; color: #e0488a; }
 	.card p { font-size: 15px; line-height: 1.65; color: #7a5c48; margin-bottom: 18px; white-space: pre-line; }
 	#again { width: 100%; background: linear-gradient(135deg,#ff8fb8,#ff5d8f); box-shadow: 0 6px 16px rgba(255,93,143,.4); }
+	#maskStats { margin: 2px 0 16px; text-align: left; }
+	#maskStats.hidden { display: none; }
+	.st-title { font-size: 13px; font-weight: 800; color: #e0488a; margin-bottom: 7px; letter-spacing: .5px; }
+	#maskStats table { width: 100%; border-collapse: collapse; font-size: 12.5px; color: #6b5040;
+		background: #fff; border-radius: 14px; overflow: hidden; box-shadow: inset 0 0 0 1px #f3e2d3; }
+	#maskStats td { padding: 6px 9px; border-top: 1px solid #f7ece2; }
+	#maskStats tr:first-child td, #maskStats tr:nth-child(2) td { border-top: none; }
+	#maskStats td.k { color: #9a8472; }
+	#maskStats td.h { font-weight: 800; color: #b08a6e; text-align: center; }
+	#maskStats td.v { text-align: center; font-weight: 800; font-size: 14px; width: 25%; }
+	#maskStats td.v.ai { color: #e0488a; }
+	#maskStats td.v.me { color: #4a8f6f; }
 </style>
 </head>
 <body>
@@ -91,7 +103,7 @@
 	<div id="boardWrap"><canvas id="board"></canvas></div>
 	<div class="btns">
 		<button id="restart">重新开局</button>
-		<button id="undo">悔棋一次</button>
+		<button id="undo">悔棋</button>
 	</div>
 	<div id="score">战绩 🍬糖包 <b id="wAi">0</b> : <b id="wMe">0</b> 🐔泥巴</div>
 	<div class="tip">五子连珠即胜利 · 手机点链接直接玩</div>
@@ -106,6 +118,7 @@
 
 听说它至今胜率 100%，
 菜鸡泥巴，敢来挑战吗？🐔</p>
+		<div id="maskStats" class="hidden"></div>
 		<button id="again">开始挨揍 🐔</button>
 	</div>
 </div>
@@ -119,7 +132,8 @@ var AI = BLACK, HUMAN = WHITE;
 var DIRS = [[1,0],[0,1],[1,1],[1,-1]];
 var VCF_DEPTH = 9;    /* VCF 最多连冲次数（约18手强制序列，手机性能与强度的平衡） */
 
-var board, history, over, winner, winCells, turn, thinking, undoUsed;
+var board, history, over, winner, winCells, turn, thinking, undoLeft, undoCount;
+var UNDO_MAX = 5;
 var stats = { ai: 0, me: 0 };
 try {
 	stats.ai = +(localStorage.getItem("tb_ai_wins") || 0);
@@ -524,19 +538,19 @@ function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 function initBoard() {
 	board = [];
 	for (var y = 0; y < N; y++) { board.push(new Array(N).fill(EMPTY)); }
-	history = []; over = false; winner = EMPTY; winCells = null; thinking = false; undoUsed = false;
+	history = []; over = false; winner = EMPTY; winCells = null; thinking = false;
+	undoLeft = UNDO_MAX; undoCount = 0;
 	updateUndoBtn();
 }
 function updateUndoBtn() {
 	var b = document.getElementById("undo");
 	if (!b) return;
-	if (undoUsed) { b.textContent = "悔棋已用完"; b.disabled = true; }
-	else { b.textContent = "悔棋一次"; b.disabled = false; }
+	b.disabled = undoLeft <= 0;   /* 不提醒：用完静默置灰，按钮文字不变 */
 }
 
-function placeStone(x, y, who) {
+function placeStone(x, y, who, ms) {
 	board[y][x] = who;
-	history.push({ x: x, y: y, who: who });
+	history.push({ x: x, y: y, who: who, f: features(board, x, y, who), ms: ms || 0 });
 	var cells = winAt(board, x, y, who);
 	if (cells) {
 		over = true; winner = who; winCells = cells;
@@ -558,8 +572,10 @@ function humanMove(x, y) {
 function aiMove() {
 	if (over) return;
 	thinking = false;
+	var t0 = Date.now();
 	var mv = aiChoose();
-	placeStone(mv[0], mv[1], AI);
+	var ms = Date.now() - t0;    /* 只算糖包真实"思考"耗时，不含刻意的落子延迟 */
+	placeStone(mv[0], mv[1], AI, ms);
 	if (!over) setStatus(pick(ME_TALK));
 }
 
@@ -570,7 +586,39 @@ function scheduleAI() {
 	setTimeout(aiMove, 300 + Math.random() * 350);
 }
 
+/* 汇总本局战术统计：落子时每手的棋型已存在 history 里，悔棋 pop 掉的手自然不计 */
+function buildStatsHTML() {
+	var aiN = 0, meN = 0, aiMsSum = 0, aiMsMax = 0;
+	var aiFour = 0, meFour = 0, aiThree = 0, meThree = 0, killAt = 0;
+	for (var i = 0; i < history.length; i++) {
+		var h = history[i], f = h.f;
+		if (h.who === AI) {
+			aiN++; aiMsSum += h.ms; if (h.ms > aiMsMax) aiMsMax = h.ms;
+			aiFour += f.openFours + f.fours; aiThree += f.openThrees;
+		} else {
+			meN++; meFour += f.openFours + f.fours; meThree += f.openThrees;
+		}
+		if (f.fives > 0) killAt = i + 1;
+	}
+	var avgMs = aiN ? Math.round(aiMsSum / aiN) : 0;
+	var row = function (label, a, b) {
+		return '<tr><td class="k">' + label + '</td><td class="v ai">' + a + '</td><td class="v me">' + b + '</td></tr>';
+	};
+	var html = '<div class="st-title">📊 本局战术统计</div><table>'
+		+ '<tr><td class="k">总手数</td><td colspan="2">' + history.length + ' 手 · 糖包 ' + aiN + ' / 泥巴 ' + meN + '</td></tr>'
+		+ '<tr><td class="k"></td><td class="h">🍬糖包</td><td class="h">🐔泥巴</td></tr>'
+		+ row("冲四 · 活四", aiFour, meFour)
+		+ row("活三布局", aiThree, meThree)
+		+ '<tr><td class="k">糖包算力</td><td colspan="2">均 ' + avgMs + 'ms / 峰值 ' + aiMsMax + 'ms</td></tr>'
+		+ (killAt ? '<tr><td class="k">绝杀手</td><td colspan="2">第 ' + killAt + ' 手' + (winner === AI ? "（糖包）" : "（泥巴）") + '</td></tr>' : '')
+		+ '<tr><td class="k">本局悔棋</td><td colspan="2">' + undoCount + ' / ' + UNDO_MAX + ' 次</td></tr>'
+		+ '</table>';
+	return html;
+}
+
 function finishGame() {
+	var statsEl = document.getElementById("maskStats");
+	if (statsEl) { statsEl.innerHTML = buildStatsHTML(); statsEl.classList.remove("hidden"); }
 	if (winner === AI) {
 		stats.ai++; try { localStorage.setItem("tb_ai_wins", stats.ai); } catch (e) {}
 		setTimeout(function () { showMask("🍬", "糖包又赢啦！", pick(WIN_TALK)); }, 550);
@@ -587,10 +635,9 @@ function finishGame() {
 }
 
 function undo() {
-	if (thinking) return;
-	if (undoUsed) { setStatus("🐔 每局只能悔棋一次，泥巴认命吧！"); return; }
+	if (thinking || undoLeft <= 0) return;   /* 次数用完静默无效，不弹任何提醒 */
 	if (history.length < 2) return;
-	undoUsed = true;
+	undoLeft--; undoCount++;
 	updateUndoBtn();
 	hideMask();
 	function popOne() {
@@ -603,7 +650,7 @@ function undo() {
 	while (history.length && history[history.length - 1].who !== AI) popOne();
 	if (history.length && history[history.length - 1].who === AI) popOne();
 	over = false; winner = EMPTY; winCells = null;
-	if (!history.length) { initBoard(); draw(); scheduleAI(); return; }
+	if (!history.length) { draw(); scheduleAI(); return; }   /* 撤到空盘：保留悔棋次数与统计，让糖包重新开局 */
 	turn = HUMAN; thinking = false;
 	draw(); setStatus(pick(ME_TALK));
 }
@@ -619,7 +666,7 @@ function startGame() {
 var canvas, ctx, CSS = 0, PAD = 0, CELL = 0;
 
 function resize() {
-	var size = Math.min(window.innerWidth - 24, 460);
+	var size = Math.max(240, Math.min(window.innerWidth - 24, 460));
 	canvas.style.width = size + "px";
 	canvas.style.height = size + "px";
 	var dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -677,8 +724,8 @@ function draw() {
 }
 
 function drawStone(x, y, who) {
-	var cx = PAD + x * CELL, cy = PAD + y * CELL, r = CELL * 0.44;
-	var grad = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.35, r * 0.15, cx, cy, r);
+	var cx = PAD + x * CELL, cy = PAD + y * CELL, r = Math.abs(CELL) * 0.44;
+	var grad = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.35, Math.max(0, r * 0.15), cx, cy, r);
 	if (who === BLACK) { grad.addColorStop(0, "#6a6a6a"); grad.addColorStop(1, "#0a0a0a"); }
 	else { grad.addColorStop(0, "#ffffff"); grad.addColorStop(1, "#d4cfc8"); }
 	ctx.fillStyle = grad;
