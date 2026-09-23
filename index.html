@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#ffd9e8">
+<title>泥巴菜鸡大战糖包 · 五子棋</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🍬%3C/text%3E%3C/svg%3E">
+<style>
+	* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+	html, body {
+		height: 100%;
+		font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+		background: linear-gradient(160deg, #fff3e0 0%, #ffe3ee 55%, #ffd9e8 100%);
+		color: #5b4636;
+		overflow-x: hidden;
+		user-select: none; -webkit-user-select: none;
+	}
+	#app {
+		max-width: 480px; margin: 0 auto;
+		padding: calc(10px + env(safe-area-inset-top)) 12px calc(16px + env(safe-area-inset-bottom));
+		min-height: 100%;
+		display: flex; flex-direction: column; align-items: center;
+	}
+	.vs { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px; }
+	.p {
+		flex: 1; border-radius: 18px; padding: 8px 6px; text-align: center;
+		background: rgba(255,255,255,.75); box-shadow: 0 4px 12px rgba(180,120,90,.12);
+	}
+	.p .face { font-size: 30px; line-height: 1.2; display: block; }
+	.p span { font-size: 14px; font-weight: 700; display: block; margin-top: 2px; }
+	.p small { font-size: 11px; opacity: .65; }
+	.p.ai { border: 2px solid #ff8fb8; }
+	.p.me { border: 2px solid #b08968; }
+	.mid { font-size: 15px; font-weight: 900; color: #ff6f9c; letter-spacing: 1px; }
+	#status {
+		margin: 10px 0 8px; min-height: 40px; width: 100%;
+		display: flex; align-items: center; justify-content: center; text-align: center;
+		background: rgba(255,255,255,.85); border-radius: 14px; padding: 8px 12px;
+		font-size: 15px; font-weight: 700; box-shadow: 0 3px 10px rgba(180,120,90,.1);
+	}
+	#status .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px; animation: pulse 1s infinite; }
+	@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+	#boardWrap { width: 100%; display:flex; justify-content:center; }
+	#board {
+		touch-action: none; border-radius: 14px;
+		box-shadow: 0 8px 24px rgba(140,90,50,.25);
+		background: #e8b87a;
+	}
+	.btns { display: flex; gap: 12px; margin-top: 12px; width: 100%; }
+	button {
+		flex: 1; border: none; border-radius: 999px; padding: 13px 0;
+		font-size: 16px; font-weight: 800; cursor: pointer;
+		color: #fff; transition: transform .08s;
+	}
+	button:active { transform: scale(.95); }
+	#restart { background: linear-gradient(135deg,#ff8fb8,#ff5d8f); box-shadow: 0 4px 12px rgba(255,93,143,.35); }
+	#undo { background: linear-gradient(135deg,#c9a27e,#9c7558); box-shadow: 0 4px 12px rgba(156,117,88,.35); }
+	#score { margin-top: 10px; font-size: 13px; opacity: .8; font-weight: 700; }
+	#score b { font-size: 17px; color: #ff5d8f; padding: 0 4px; }
+	.tip { margin-top: 8px; font-size: 12px; opacity: .55; text-align: center; }
+	#mask {
+		position: fixed; inset: 0; background: rgba(80,50,40,.45);
+		display: flex; align-items: center; justify-content: center; z-index: 20;
+		backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+		padding: 24px;
+	}
+	#mask.hidden { display: none; }
+	.card {
+		background: #fff8f3; border-radius: 26px; padding: 28px 24px 26px;
+		text-align: center; width: 100%; max-width: 330px;
+		box-shadow: 0 16px 48px rgba(120,60,60,.35);
+		animation: pop .25s ease;
+	}
+	@keyframes pop { from { transform: scale(.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+	#maskEmoji { font-size: 64px; line-height: 1.15; }
+	.card h2 { margin: 8px 0 8px; font-size: 22px; color: #e0488a; }
+	.card p { font-size: 15px; line-height: 1.65; color: #7a5c48; margin-bottom: 18px; white-space: pre-line; }
+	#again { width: 100%; background: linear-gradient(135deg,#ff8fb8,#ff5d8f); box-shadow: 0 6px 16px rgba(255,93,143,.4); }
+</style>
+</head>
+<body>
+<div id="app">
+	<div class="vs">
+		<div class="p ai"><span class="face">🍬</span><span>糖包</span><small>AI · 黑棋先手</small></div>
+		<div class="mid">VS</div>
+		<div class="p me"><span class="face">🐔</span><span>泥巴菜鸡</span><small>你 · 白棋后手</small></div>
+	</div>
+	<div id="status">🍬 糖包：加载中…</div>
+	<div id="boardWrap"><canvas id="board"></canvas></div>
+	<div class="btns">
+		<button id="restart">重新开局</button>
+		<button id="undo">悔棋一步</button>
+	</div>
+	<div id="score">战绩 🍬糖包 <b id="wAi">0</b> : <b id="wMe">0</b> 🐔泥巴</div>
+	<div class="tip">五子连珠即胜利 · 手机点链接直接玩</div>
+</div>
+
+<div id="mask">
+	<div class="card">
+		<div id="maskEmoji">🍬</div>
+		<h2 id="maskTitle">泥巴菜鸡大战糖包</h2>
+		<p id="maskText">糖包执黑先手，攻无不克；
+你执白后手，五子连珠就算赢。
+
+听说它至今胜率 100%，
+菜鸡泥巴，敢来挑战吗？🐔</p>
+		<button id="again">开始挨揍 🐔</button>
+	</div>
+</div>
+
+<script>
+(function () {
+"use strict";
+/* ================= 基础常量 ================= */
+var N = 15, EMPTY = 0, BLACK = 1, WHITE = 2;
+var AI = BLACK, HUMAN = WHITE;
+var DIRS = [[1,0],[0,1],[1,1],[1,-1]];
+
+var board, history, over, winner, winCells, turn, thinking;
+var stats = { ai: 0, me: 0 };
+try {
+	stats.ai = +(localStorage.getItem("tb_ai_wins") || 0);
+	stats.me = +(localStorage.getItem("tb_me_wins") || 0);
+} catch (e) {}
+
+/* ================= 棋型表（1=己方 0=空 2=对方/边界） ================= */
+var PATS = [
+	{ re: /11111/,                                  g: /11111/g,                                  v: 10000000, k: "five" },
+	{ re: /011110/,                                 g: /011110/g,                                 v: 1000000,  k: "openFour" },
+	{ re: /(?:211110|011112|11011|10111|11101)/,    g: /(?:211110|011112|11011|10111|11101)/g,    v: 100000,   k: "four" },
+	{ re: /(?:011100|001110|011010|010110)/,        g: /(?:011100|001110|011010|010110)/g,        v: 50000,    k: "openThree" },
+	{ re: /(?:001112|211100|010112|211010|011012|210110|10011|11001|10101)/,
+	  g: /(?:001112|211100|010112|211010|011012|210110|10011|11001|10101)/g, v: 5000, k: "sleepThree" },
+	{ re: /(?:001100|001010|010100|010010|011000|000110)/,
+	  g: /(?:001100|001010|010100|010010|011000|000110)/g, v: 1000, k: "openTwo" },
+	{ re: /(?:000112|211000|001012|210100|010012|210010|001102|201100|010102|201010)/,
+	  g: /(?:000112|211000|001012|210100|010012|210010|001102|201100|010102|201010)/g, v: 200, k: "sleepTwo" },
+	{ re: /(?:000010|010000)/,                      g: /(?:000010|010000)/g,                      v: 50,      k: "one" }
+];
+
+/* 以 (x,y) 为中心取 9 格线型字符串，落子前需已把该格设为 who */
+function lineAt(bd, x, y, dx, dy, who) {
+	var s = "";
+	for (var i = -4; i <= 4; i++) {
+		var nx = x + dx * i, ny = y + dy * i;
+		if (nx < 0 || ny < 0 || nx >= N || ny >= N) { s += "2"; continue; }
+		var v = bd[ny][nx];
+		s += v === EMPTY ? "0" : (v === who ? "1" : "2");
+	}
+	return s;
+}
+
+function features(bd, x, y, who) {
+	var f = { score: 0, fives: 0, openFours: 0, fours: 0, openThrees: 0 };
+	for (var d = 0; d < 4; d++) {
+		var s = lineAt(bd, x, y, DIRS[d][0], DIRS[d][1], who);
+		var cnt = 0;
+		for (var c = 0; c < 9; c++) if (s.charAt(c) === "1") cnt++;
+		var i0;
+		if (cnt < 2) continue;            /* 只有中心一子，不构成任何棋型 */
+		if (cnt === 2) i0 = 5;             /* 最多成二 */
+		else if (cnt === 3) i0 = 3;        /* 最多成三 */
+		else if (cnt === 4) i0 = 1;        /* 最多成四 */
+		else i0 = 0;
+		for (var i = i0; i < PATS.length; i++) {
+			if (PATS[i].re.test(s)) {
+				f.score += PATS[i].v;
+				if (i === 0) f.fives++;
+				else if (i === 1) f.openFours++;
+				else if (i === 2) f.fours++;
+				else if (i === 3) f.openThrees++;
+				break;
+			}
+		}
+	}
+	return f;
+}
+function featuresV(bd, x, y, who) {
+	bd[y][x] = who;
+	var f = features(bd, x, y, who);
+	bd[y][x] = EMPTY;
+	return f;
+}
+function isFork(f) {
+	return f.fours >= 2 || (f.fours >= 1 && f.openThrees >= 1) || f.openThrees >= 2;
+}
+
+/* 候选点：已有棋子周围 2 格内的空位 */
+function genCandidates(bd, r) {
+	r = r || 2;
+	var set = {}, any = false, out = [];
+	for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) {
+		if (bd[y][x] === EMPTY) continue;
+		any = true;
+		for (var dy = -r; dy <= r; dy++) for (var dx = -r; dx <= r; dx++) {
+			var nx = x + dx, ny = y + dy;
+			if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
+			if (bd[ny][nx] === EMPTY) set[nx + "," + ny] = [nx, ny];
+		}
+	}
+	if (!any) return [[7, 7]];
+	for (var k in set) out.push(set[k]);
+	return out;
+}
+
+function hval(bd, x, y, who) {
+	var mine = featuresV(bd, x, y, who).score;
+	var his = featuresV(bd, x, y, who === AI ? HUMAN : AI).score;
+	return mine + his * 0.9;
+}
+
+/* 全盘评估（叶子节点用） */
+var LINES = (function () {
+	var L = [];
+	var line, k, x, y;
+	for (y = 0; y < N; y++) { line = []; for (x = 0; x < N; x++) line.push([x, y]); L.push(line); }
+	for (x = 0; x < N; x++) { line = []; for (y = 0; y < N; y++) line.push([x, y]); L.push(line); }
+	for (k = 0; k <= N - 5; k++) {
+		line = []; for (x = k, y = 0; x < N && y < N; x++, y++) line.push([x, y]); L.push(line);
+		line = []; for (x = k, y = 0; x >= 0 && y < N; x--, y++) line.push([x, y]); L.push(line);
+		if (k > 0) {
+			line = []; for (x = 0, y = k; x < N && y < N; x++, y++) line.push([x, y]); L.push(line);
+			line = []; for (x = N - 1, y = k; x >= 0 && y < N; x--, y++) line.push([x, y]); L.push(line);
+		}
+	}
+	return L;
+})();
+/* 每个交叉点所属的 4 条线，用于增量评估 */
+var LINE_IDX = (function () {
+	var idx = new Array(N * N);
+	for (var i = 0; i < idx.length; i++) idx[i] = [];
+	LINES.forEach(function (line) {
+		line.forEach(function (p) { idx[p[1] * N + p[0]].push(line); });
+	});
+	return idx;
+})();
+function mapLine(bd, line, who) {
+	var s = "2";
+	for (var i = 0; i < line.length; i++) {
+		var v = bd[line[i][1]][line[i][0]];
+		s += v === EMPTY ? "0" : (v === who ? "1" : "2");
+	}
+	return s + "2";
+}
+function lineValue(s) {
+	var v = 0;
+	for (var i = 0; i < PATS.length; i++) {
+		var g = PATS[i].g; g.lastIndex = 0;
+		while (g.exec(s)) v += PATS[i].v;
+	}
+	return v;
+}
+function evaluate(bd) {
+	var s = 0;
+	for (var i = 0; i < LINES.length; i++) {
+		s += lineValue(mapLine(bd, LINES[i], AI)) - lineValue(mapLine(bd, LINES[i], HUMAN)) * 1.08;
+	}
+	return s;
+}
+/* 落子引起的评分增量：只有经过该点的 4 条线会变化 */
+function evalDelta(bd, x, y, who) {
+	var lines = LINE_IDX[y * N + x];
+	var d = 0;
+	for (var i = 0; i < lines.length; i++) {
+		var line = lines[i];
+		var bA = mapLine(bd, line, AI), bH = mapLine(bd, line, HUMAN);
+		bd[y][x] = who;
+		var aA = mapLine(bd, line, AI), aH = mapLine(bd, line, HUMAN);
+		bd[y][x] = EMPTY;
+		d += lineValue(aA) - lineValue(bA) - (lineValue(aH) - lineValue(bH)) * 1.08;
+	}
+	return d;
+}
+
+/* 胜负判定 */
+function winAt(bd, x, y, who) {
+	for (var d = 0; d < 4; d++) {
+		var dx = DIRS[d][0], dy = DIRS[d][1], cnt = 1;
+		var cells = [[x, y]];
+		var nx = x + dx, ny = y + dy;
+		while (nx >= 0 && ny >= 0 && nx < N && ny < N && bd[ny][nx] === who) { cells.push([nx, ny]); cnt++; nx += dx; ny += dy; }
+		nx = x - dx; ny = y - dy;
+		while (nx >= 0 && ny >= 0 && nx < N && ny < N && bd[ny][nx] === who) { cells.unshift([nx, ny]); cnt++; nx -= dx; ny -= dy; }
+		if (cnt >= 5) return cells;
+	}
+	return null;
+}
+
+/* Minimax + Alpha-Beta（root 之后再搜 3 层，共 4 层；score 为增量维护的局面分） */
+function ab(bd, depth, alpha, beta, maxing, lx, ly, lw, score) {
+	if (winAt(bd, lx, ly, lw)) return lw === AI ? (1e8 + depth * 10) : (-1e8 - depth * 10);
+	if (depth === 0) return score;
+	var who = maxing ? AI : HUMAN;
+	var cands = genCandidates(bd, 1);   /* 深层只看贴邻点，战术反应不会漏 */
+	if (!cands.length) return score;
+	var arr = [], i;
+	for (i = 0; i < cands.length; i++) {
+		arr.push({ x: cands[i][0], y: cands[i][1], h: hval(bd, cands[i][0], cands[i][1], who) });
+	}
+	arr.sort(function (a, b) { return b.h - a.h; });
+	var width = depth >= 2 ? 6 : 8;
+	arr = arr.slice(0, width);
+	if (maxing) {
+		var bv = -Infinity;
+		for (i = 0; i < arr.length; i++) {
+			var x = arr[i].x, y = arr[i].y, v, d;
+			d = evalDelta(bd, x, y, who);
+			bd[y][x] = who;
+			v = winAt(bd, x, y, who) ? (1e8 + depth * 10) : ab(bd, depth - 1, alpha, beta, false, x, y, who, score + d);
+			bd[y][x] = EMPTY;
+			if (v > bv) bv = v;
+			if (bv > alpha) alpha = bv;
+			if (beta <= alpha) break;
+		}
+		return bv;
+	} else {
+		bv = Infinity;
+		for (i = 0; i < arr.length; i++) {
+			x = arr[i].x; y = arr[i].y;
+			d = evalDelta(bd, x, y, who);
+			bd[y][x] = who;
+			v = winAt(bd, x, y, who) ? (-1e8 - depth * 10) : ab(bd, depth - 1, alpha, beta, true, x, y, who, score + d);
+			bd[y][x] = EMPTY;
+			if (v < bv) bv = v;
+			if (bv < beta) beta = bv;
+			if (beta <= alpha) break;
+		}
+		return bv;
+	}
+}
+
+/* 糖包的落子决策：战术优先（成五/挡五/活四/挡活四/双杀/防双杀），否则 Minimax */
+function aiChoose() {
+	var cands = genCandidates(board);
+	var A = [], i;
+	for (i = 0; i < cands.length; i++) {
+		var x = cands[i][0], y = cands[i][1];
+		var a = { x: x, y: y, me: featuresV(board, x, y, AI), opp: featuresV(board, x, y, HUMAN) };
+		a.h = a.me.score + a.opp.score * 0.95;
+		A.push(a);
+	}
+	function best(list, key, own) {
+		list.sort(function (a, b) {
+			var da = a[key], db = b[key];
+			if (db.score !== da.score) return db.score - da.score;
+			return (own ? b.me.score - a.me.score : b.me.score - a.me.score);
+		});
+		return [list[0].x, list[0].y];
+	}
+	var m;
+	m = A.filter(function (a) { return a.me.fives > 0; });
+	if (m.length) return [m[0].x, m[0].y];
+	m = A.filter(function (a) { return a.opp.fives > 0; });
+	if (m.length) return best(m, "opp", false);
+	m = A.filter(function (a) { return a.me.openFours > 0; });
+	if (m.length) return best(m, "me", true);
+	m = A.filter(function (a) { return a.opp.openFours > 0; });
+	if (m.length) return best(m, "opp", false);
+	m = A.filter(function (a) { return isFork(a.me); });
+	if (m.length) return best(m, "me", true);
+	m = A.filter(function (a) { return isFork(a.opp); });
+	if (m.length) return best(m, "opp", false);
+
+	A.sort(function (a, b) { return b.h - a.h; });
+	var top = A.slice(0, 12);
+	var bv = -Infinity, bx = top[0].x, by = top[0].y;
+	var baseScore = evaluate(board);
+	for (i = 0; i < top.length; i++) {
+		var x2 = top[i].x, y2 = top[i].y, v, d;
+		d = evalDelta(board, x2, y2, AI);
+		board[y2][x2] = AI;
+		v = winAt(board, x2, y2, AI) ? 1e9 : ab(board, 3, -1e10, 1e10, false, x2, y2, AI, baseScore + d);
+		board[y2][x2] = EMPTY;
+		if (v > bv) { bv = v; bx = x2; by = y2; }
+	}
+	return [bx, by];
+}
+
+/* ================= 对局流程 ================= */
+var AI_TALK = ["🍬 糖包：就这？我用脚都能赢~", "🍬 糖包：让你三子，真的。", "🍬 糖包：泥巴就是扶不上墙呀~", "🍬 糖包：闭目养神一手…就这？", "🍬 糖包：菜鸡你手抖什么？"];
+var ME_TALK = ["🐔 轮到你了，菜鸡泥巴，别怂！", "🐔 快落子！糖包都等困了~", "🐔 泥巴虽菜，气势不能输！"];
+var WIN_TALK = ["菜鸡泥巴，你又双叒输啦！🦴", "100% 胜率永不翻车，感谢送分！🍬", "泥巴扶不上墙，洗洗睡吧泥巴~🐔", "就这就这就这？糖包还没出力呢！🍬", "你下棋的样子，像极了一坨泥巴~"];
+
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function initBoard() {
+	board = [];
+	for (var y = 0; y < N; y++) { board.push(new Array(N).fill(EMPTY)); }
+	history = []; over = false; winner = EMPTY; winCells = null; thinking = false;
+}
+
+function placeStone(x, y, who) {
+	board[y][x] = who;
+	history.push({ x: x, y: y, who: who });
+	var cells = winAt(board, x, y, who);
+	if (cells) {
+		over = true; winner = who; winCells = cells;
+		turn = EMPTY; draw(); finishGame(); return;
+	}
+	var full = true;
+	for (var i = 0; i < board.length; i++) if (board[i].indexOf(EMPTY) >= 0) { full = false; break; }
+	if (full) { over = true; winner = EMPTY; turn = EMPTY; draw(); finishGame(); return; }
+	turn = who === AI ? HUMAN : AI;
+	draw();
+}
+
+function humanMove(x, y) {
+	if (over || thinking || turn !== HUMAN || board[y][x] !== EMPTY) return;
+	placeStone(x, y, HUMAN);
+	if (!over) scheduleAI();
+}
+
+function aiMove() {
+	if (over) return;
+	thinking = false;
+	var mv = aiChoose();
+	placeStone(mv[0], mv[1], AI);
+	if (!over) setStatus(pick(ME_TALK));
+}
+
+function scheduleAI() {
+	thinking = true;
+	setStatus('<span class="dot" style="background:#ff5d8f"></span>' + pick(AI_TALK));
+	draw();
+	setTimeout(aiMove, 300 + Math.random() * 350);
+}
+
+function finishGame() {
+	if (winner === AI) {
+		stats.ai++; try { localStorage.setItem("tb_ai_wins", stats.ai); } catch (e) {}
+		setTimeout(function () { showMask("🍬", "糖包又赢啦！", pick(WIN_TALK)); }, 550);
+		setStatus("🍬 糖包获胜！泥巴菜鸡 +1 败场");
+	} else if (winner === HUMAN) {
+		stats.me++; try { localStorage.setItem("tb_me_wins", stats.me); } catch (e) {}
+		setTimeout(function () { showMask("🤯", "泥巴居然赢了？！", "糖包当场石化…这不可能！\n快把截图甩到群里炫耀！"); }, 550);
+		setStatus("🐔 泥巴菜鸡奇迹获胜！");
+	} else {
+		setTimeout(function () { showMask("🤝", "平局！", "棋盘下满了，算你跑得快~"); }, 550);
+		setStatus("🤝 平局");
+	}
+	updateScore();
+}
+
+function undo() {
+	if (thinking || history.length < 2) return;
+	hideMask();
+	function popOne() {
+		var h = history.pop();
+		if (h) board[h.y][h.x] = EMPTY;
+	}
+	/* 依次撤回：玩家最后一手 + 糖包对应的一手 */
+	while (history.length && history[history.length - 1].who !== HUMAN) popOne();
+	if (history.length && history[history.length - 1].who === HUMAN) popOne();
+	while (history.length && history[history.length - 1].who !== AI) popOne();
+	if (history.length && history[history.length - 1].who === AI) popOne();
+	over = false; winner = EMPTY; winCells = null;
+	if (!history.length) { initBoard(); draw(); scheduleAI(); return; }
+	turn = HUMAN; thinking = false;
+	draw(); setStatus(pick(ME_TALK));
+}
+
+function startGame() {
+	hideMask();
+	initBoard();
+	draw();
+	scheduleAI();
+}
+
+/* ================= 渲染 ================= */
+var canvas, ctx, CSS = 0, PAD = 0, CELL = 0;
+
+function resize() {
+	var size = Math.min(window.innerWidth - 24, 460);
+	canvas.style.width = size + "px";
+	canvas.style.height = size + "px";
+	var dpr = Math.min(window.devicePixelRatio || 1, 3);
+	canvas.width = Math.round(size * dpr);
+	canvas.height = Math.round(size * dpr);
+	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+	CSS = size; PAD = size * 0.062; CELL = (size - PAD * 2) / (N - 1);
+	draw();
+}
+
+function draw() {
+	if (!ctx || !board) return;
+	ctx.clearRect(0, 0, CSS, CSS);
+	var g = ctx.createLinearGradient(0, 0, CSS, CSS);
+	g.addColorStop(0, "#ecc084"); g.addColorStop(1, "#dfa75f");
+	ctx.fillStyle = g;
+	ctx.fillRect(0, 0, CSS, CSS);
+
+	ctx.strokeStyle = "rgba(90,55,20,.55)";
+	ctx.lineWidth = 1;
+	ctx.beginPath();
+	for (var i = 0; i < N; i++) {
+		var p = PAD + i * CELL;
+		ctx.moveTo(PAD, p); ctx.lineTo(CSS - PAD, p);
+		ctx.moveTo(p, PAD); ctx.lineTo(p, CSS - PAD);
+	}
+	ctx.stroke();
+	ctx.fillStyle = "rgba(90,55,20,.7)";
+	[[3,3],[3,11],[11,3],[11,11],[7,7]].forEach(function (s) {
+		ctx.beginPath();
+		ctx.arc(PAD + s[0] * CELL, PAD + s[1] * CELL, Math.max(3, CELL * 0.09), 0, Math.PI * 2);
+		ctx.fill();
+	});
+
+	for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) {
+		if (board[y][x] === EMPTY) continue;
+		drawStone(x, y, board[y][x]);
+	}
+	if (history.length) {
+		var last = history[history.length - 1];
+		ctx.fillStyle = "#ff3d7f";
+		ctx.beginPath();
+		ctx.arc(PAD + last.x * CELL, PAD + last.y * CELL, Math.max(3, CELL * 0.12), 0, Math.PI * 2);
+		ctx.fill();
+	}
+	if (winCells) {
+		ctx.strokeStyle = "rgba(255,61,127,.9)";
+		ctx.lineWidth = Math.max(3, CELL * 0.12);
+		ctx.lineCap = "round";
+		ctx.beginPath();
+		ctx.moveTo(PAD + winCells[0][0] * CELL, PAD + winCells[0][1] * CELL);
+		ctx.lineTo(PAD + winCells[winCells.length - 1][0] * CELL, PAD + winCells[winCells.length - 1][1] * CELL);
+		ctx.stroke();
+	}
+}
+
+function drawStone(x, y, who) {
+	var cx = PAD + x * CELL, cy = PAD + y * CELL, r = CELL * 0.44;
+	var grad = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.35, r * 0.15, cx, cy, r);
+	if (who === BLACK) { grad.addColorStop(0, "#6a6a6a"); grad.addColorStop(1, "#0a0a0a"); }
+	else { grad.addColorStop(0, "#ffffff"); grad.addColorStop(1, "#d4cfc8"); }
+	ctx.fillStyle = grad;
+	ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+	ctx.strokeStyle = who === BLACK ? "rgba(0,0,0,.4)" : "rgba(120,100,80,.35)";
+	ctx.lineWidth = 1; ctx.stroke();
+}
+
+function onTap(e) {
+	e.preventDefault();
+	if (over || thinking || turn !== HUMAN) return;
+	var rect = canvas.getBoundingClientRect();
+	var px = e.clientX - rect.left, py = e.clientY - rect.top;
+	var x = Math.round((px - PAD) / CELL), y = Math.round((py - PAD) / CELL);
+	if (x < 0 || y < 0 || x >= N || y >= N) return;
+	if (Math.hypot(px - (PAD + x * CELL), py - (PAD + y * CELL)) > CELL * 0.5) return;
+	humanMove(x, y);
+}
+
+/* ================= UI 绑定 ================= */
+function setStatus(html) { document.getElementById("status").innerHTML = html; }
+function updateScore() {
+	document.getElementById("wAi").textContent = stats.ai;
+	document.getElementById("wMe").textContent = stats.me;
+}
+function showMask(emoji, title, text) {
+	document.getElementById("maskEmoji").textContent = emoji;
+	document.getElementById("maskTitle").textContent = title;
+	document.getElementById("maskText").textContent = text;
+	document.getElementById("mask").classList.remove("hidden");
+}
+function hideMask() { document.getElementById("mask").classList.add("hidden"); }
+
+window.addEventListener("DOMContentLoaded", function () {
+	canvas = document.getElementById("board");
+	ctx = canvas.getContext("2d");
+	initBoard();
+	updateScore();
+	setStatus("🍬 糖包：点「开始挨揍」开战！");
+	resize();
+	window.addEventListener("resize", resize);
+	canvas.addEventListener("pointerdown", onTap);
+	document.getElementById("restart").addEventListener("click", startGame);
+	document.getElementById("again").addEventListener("click", startGame);
+	document.getElementById("undo").addEventListener("click", undo);
+});
+
+/* 供自动化测试读取状态 */
+function getBoard() { return board; }
+function isOver() { return over; }
+function getWinner() { return winner; }
+window.__TB_TEST__ = {
+	getBoard: getBoard, isOver: isOver, getWinner: getWinner,
+	startGame: startGame, humanMove: humanMove, genCandidates: genCandidates,
+	featuresV: featuresV, isFork: isFork, evaluate: evaluate, evalDelta: evalDelta
+};
+})();
+</script>
+</body>
+</html>
